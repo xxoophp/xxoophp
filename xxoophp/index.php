@@ -73,7 +73,7 @@ $GLOBALS['xxoo']['date_timezone'] = 'Asia/Chongqing';
  * file: 输出到文件
  * database: 输出到数据库
  */
-define( 'LOG_OUTPUT', 'file' );
+define( 'LOG_OUTPUT', 'none' );
 
 // 文件日志目录
 $GLOBALS['xxoo']['logs_dir'] = 'logs';

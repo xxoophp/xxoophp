@@ -4,7 +4,7 @@
   ---------------------------------------------------------------------------
 	xxoophp框架入口
 	
-	@version 0.1
+	@version 0.2
 	@link http://xxoophp.com
   ---------------------------------------------------------------------------
 */
@@ -22,21 +22,20 @@ define('ENV', 'development');
 
 
 // 根据不同的产品状态，设置错误报告
-if( defined('ENV') ) {
-	switch(ENV) {
-		case 'development':
-			error_reporting(E_ALL);
-		break;	
-		
-		case 'testing':
-		case 'production':
-			error_reporting(0);
-		break;
-		
-		default:
-			exit('The application environment is not set correctly.');
-	}
+switch(ENV) {
+	case 'development':
+		error_reporting(E_ALL);
+	break;	
+	
+	case 'testing':
+	case 'production':
+		error_reporting(0);
+	break;
+	
+	default:
+		exit('The application environment is not set correctly.');
 }
+
 
 // 分隔符
 define( 'DS', DIRECTORY_SEPARATOR );

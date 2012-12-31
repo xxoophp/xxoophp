@@ -5,7 +5,7 @@
 	xxoophp框架基础函数库
 	提供框架/开发所需的常用函数，包括错误处理，URL，日志记录，配置文件读写等函数.
 	
-	@version 0.1
+	@version 0.2
 	@link http://xxoophp.com/api/core.fn
   	@author bing.peng yanhong.liu
   ---------------------------------------------------------------
@@ -18,7 +18,7 @@
  * @param string $filepath
  * @param string $line
  */
-function show_error( $message, $severity=E_ERROR, $filepath='', $line='' ) {
+function show_error( $severity, $message='', $filepath='', $line='' ) {
 	$levels = array(
 		E_ERROR				=>	'Error',
 		E_WARNING			=>	'Warning',
@@ -33,18 +33,18 @@ function show_error( $message, $severity=E_ERROR, $filepath='', $line='' ) {
 		E_USER_NOTICE		=>	'User Notice',
 		E_STRICT			=>	'Runtime Notice'
 	);
-	$title = $levels[$severity] . " - " . $message;
-	$message = '';
+	$title = $levels[$severity] . ' - ' . $message;
 	if( $filepath != '' && $line != '' ) {
 		$message = "Error on line $line in $filepath";
 	}
 	
 	Logger::error( $title . ' - ' . $message );
-	if( ENV == 'development' ) {
-		include XXOO.'errors'.DS.'500.php';
+	
+	if( ENV == 'development' ) {	
+		include XXOO.'core'.DS.'error.php';
 	}
 	else {
-		include ROOT.'errors'.DS.'500.php';
+		include ROOT.'errors'.DS.'error.php';
 	}
 	exit;
 }
@@ -61,13 +61,25 @@ function shutdown() {
 register_shutdown_function('shutdown');	// 注册shutdown函数
 
 /**
+ * 如果用户设置了自动转义，取消自动转义
+ */
+function transcribe() {
+	// magic_quotes_gpc can't be turned off
+	if(get_magic_quotes_gpc()) {
+		for($i = 0, $_SG = array(&$_GET, &$_POST, &$_COOKIE, &$_REQUEST), $c = count($_SG); $i < $c; ++$i) {
+			$_SG[$i] = array_map('stripslashes', $_SG[$i]);
+		}
+	}
+}
+
+/**
  * 显示404页面
  */
 function show_404() {
 	header('HTTP/1.1 404 Not Found');
-	Logger::error( '404 Not found by - ' . $GLOBALS['uri'] );
+	Logger::error( '404 Not Found - ' . $GLOBALS['request']['url'] );
 	if( ENV == 'development' ) {
-		include XXOO.'errors'.DS.'404.php';
+		show_error( E_ERROR, '404 Not Found - ' . $GLOBALS['request']['url'] );
 	}
 	else {
 		include ROOT.'errors'.DS.'404.php';
@@ -76,37 +88,85 @@ function show_404() {
 }
 
 /**
- * 根据URI获取请求处理handle
- * 先从urls中获取，如果没有，则按照惯例进行匹配，如果都没则返回false
+ * 解析URI
+ * 根据URI获取请求所需的类、方法、参数、拦截器等信息
  * @param string $uri
- * @return array()/false
+ * @return bool
  */
-function gen_request( $uri ) {
-	$urls_file = ROOT . 'conf'. DS .'urls.conf.php';
+function parse_uri( $uri ) {
+	$urls_file = ROOT . 'conf'. DS . 'urls.conf.php';
 	if( !file_exists( $urls_file ) ) show_error( 'Can\'t find file - ' . $urls_file );
-	include( $urls_file );	// 载入URL配置
+	$urls = include( $urls_file );	// 载入URL配置
 	if( !isset( $urls ) || !is_array( $urls ) ) show_error( 'Invalid urls config in ' . $urls_file );
 	
-	$flag = false;
-	$request = array();
 	foreach( $urls as $pattern=>$c ) {
-		if( preg_match( "/^{$pattern}$/", $uri, $matches ) ) {
-			array_shift($matches);	// 移出$matches[0]
-			$request['params'] = $matches;	// 获取URL中携带的参数		
+		if( preg_match( "#^{$pattern}$#", $uri, $matches ) ) {
+			// URL中携带的参数
+			$matches = array_slice($matches, 1);
+			if( isset( $GLOBALS['request']['params'] ) ) {
+				$GLOBALS['request']['params'] = array_merge( $GLOBALS['request']['params'], $matches );
+			}
+			else {
+				$GLOBALS['request']['params'] = $matches;
+			}	
 			
-			if( isset( $c['p'] ) ) {		// 补充额外参数	
-				$request['params'] = array_merge( $request['params'], explode(',', $c['p']) );	
+			// 额外参数	
+			if( isset( $c['p'] ) ) {		
+				$GLOBALS['request']['params'] = array_merge( $GLOBALS['request']['params'], explode(',', $c['p']) );	
 			}
 			
-			$request['file'] = 'controllers'.DS.$c['c'].'Controller.php';	// 资源文件
-			$arr = explode( '/', $c['c'] );
-			$request['class'] = end( $arr ) . 'Controller';					// 类名
-			$request['fn'] = isset( $c['f'] ) ? $c['f'] : 'index';			// 函数名
-			$flag = true;
-			break;		
+			// 控制器
+			if( isset( $c['c'] ) ) {
+				$GLOBALS['request']['file'] = 'controllers' . DS . $c['c'] . 'Controller.php';
+				$GLOBALS['request']['class'] = end( ( explode('/', $c['c']) ) ) . 'Controller';		
+			}
+			
+			// action方法
+			$GLOBALS['request']['fn'] = isset( $c['f'] ) ? $c['f'] : 'index';	
+			
+			// 拦截器
+			if( isset( $c['i'] ) ) {
+				if( isset( $GLOBALS['request']['interceptor_list'] ) ) { 
+					$GLOBALS['request']['interceptors'] = 
+						array_merge( $GLOBALS['request']['interceptors'], explode(',', $c['i']) );
+				}
+				else {
+					$GLOBALS['request']['interceptors'] = explode(',', $c['i']);
+				}
+			}	
 		}
 	}
-	return $flag ? $request : false;
+	
+	if( isset($GLOBALS['request']['class']) && isset($GLOBALS['request']['class']) 
+			&& isset($GLOBALS['request']['fn']) ) {
+		return true;		
+	}
+	else {
+		return false;
+	}
+}
+
+/**
+ * 执行拦截器方法
+ * @param string $method before/after
+ */
+function call_interceptor( $method ) {
+	static $interceptors = array();
+	if( !isset( $GLOBALS['request']['interceptors'] ) ) return false;
+	
+	foreach( $GLOBALS['request']['interceptors'] as $in ) {
+		if( !isset( $interceptors[$in] ) ) {
+			$in_file = ROOT.'exts'.DS."{$in}Interceptor.php";
+			if( !file_exists( $in_file ) ) trigger_error( "Can\'t find interceptor file: {$in_file}", E_USER_ERROR );
+			require $in_file;
+			$interceptor = $in . 'Interceptor';
+			$interceptors[$in] = new $interceptor();
+		}
+		
+		if( method_exists( $interceptors[$in], $method ) ) {
+			call_user_func_array( array($interceptors[$in], $method), array() );
+		}
+	}
 }
 
 /**
@@ -116,7 +176,7 @@ function gen_request( $uri ) {
 function mount_hooks( $uri ) {
 	$hook_conf_file =  ROOT.'conf'.DS.'hook.conf.php';
 	if( !file_exists( $hook_conf_file ) ) show_error( 'Can\'t find file - ' . $hook_conf_file, E_ERROR, __FILE__, __LINE__ );
-	include( $hook_conf_file );	// 载入URL配置
+	$hooks = include( $hook_conf_file );	// 载入URL配置
 	if( !isset( $hooks ) || !is_array( $hooks ) ) show_error( 'Invalid hooks config', E_ERROR, __FILE__, __LINE__ );
 	
 	foreach( $hooks as $pattern=>$c ) {
@@ -187,7 +247,7 @@ function get_current_url() {
  */
 function get_current_uri() {
 	$uri = 'default';
-	if( conf('xxoo', 'uri_protocol') == 'PATH_INFO' ) { 	// pathinfo url
+	if( conf('xxoo', 'protocol') == 'PATH_INFO' ) { 	// pathinfo url
 		$uri = isset( $_SERVER['PATH_INFO'] ) ? trim( $_SERVER['PATH_INFO'], '/') : 'default';
 	}
 	else {	// query string url
@@ -291,6 +351,32 @@ function m( $k = NULL, $v = NULL ) {
 	}
 }
 
+if (!function_exists('lang')) {
+	/**
+	 * 读取语言文件
+	 * 根据全局语言设置载入相应的语言文件
+	 * @param string $key
+	 * @return string
+	 */
+	function lang($key) {
+		static $language = array();
+		if( empty( $language ) ) {
+			$lang_file = ROOT . 'language'. DS .$GLOBALS['request']['lang'].'.lang.php';
+			if( !file_exists( $lang_file ) ) show_error( 'Can\'t find file - ' . $lang_file );
+			$lang = require_once( $lang_file );	// 载入URL配置
+			if( !isset( $lang ) || !is_array( $lang ) ) show_error( 'Invalid language config in ' . $lang_file );
+			$language = $lang;
+		}
+		
+		if( isset( $language[$key] ) ) {
+			return $language[$key];
+		}
+		else {
+			show_error( $key .' not found in '. $GLOBALS['request']['lang'].'.lang.php' );
+		}
+	}
+}
+
 /**
  * 渲染视图
  * @param string $tpl 模板路径
@@ -317,7 +403,17 @@ function render( $tpl = '', $data = array(), $is_return = FALSE ) {
 }
 
 /**
+ * 获取输入GET/POST/COOKIE
+ * @param string $key
+ * @return string
+ */
+function input( $key ) {
+	return isset( $_REQUEST[$key] ) ? $_REQUEST[$key] : false;
+}
+
+/**
  * 安全输出
+ * 对输出字符串转义，避免xss攻击
  * @param mixd $out
  */
 function secho( $output ) {

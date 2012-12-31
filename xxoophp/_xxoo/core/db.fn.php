@@ -19,7 +19,7 @@
 function db( $k = 'default' ) {
 	$conf = conf( 'db', $k );
 	if ( !$conf ) {
-		show_error( 'Can\'t find $GLOBALS[\'db\'][\''.$k.'\'] - in database.conf.php' );
+		trigger_error( 'Can\'t find $GLOBALS[\'db\'][\''.$k.'\'] - in database.conf.php', E_USER_ERROR );
 	}
 
 	$db_key = md5( "{$conf['hostname']}-{$conf['username']}-{$conf['password']}-{$conf['database']}" );
@@ -27,11 +27,11 @@ function db( $k = 'default' ) {
 		$server = $conf['hostname'] . ':' . $conf['port'];
 		$link = mysql_connect( $server, $conf['username'], $conf['password'], TRUE );
 		if( !$link ) {
-			show_error( 'Connect database be fail, Pealse inspect yours database setting!' );
+			trigger_error( 'Connect database be fail, Pealse inspect yours database setting!', E_USER_ERROR );
 		}
 		
 		if( !mysql_select_db( $conf['database'], $link ) ) {
-			show_error( "Can't select database - {$conf['database']}, Pealse inspect yours database setting" );	
+			trigger_error( "Can't select database - {$conf['database']}, Pealse inspect yours database setting", E_USER_ERROR );	
 		}
 		mysql_query( "SET names = '{$conf['char_set']}'" );
 		$GLOBALS[$db_key] = $link;
@@ -52,7 +52,7 @@ function run_sql( $sql, $db = NULL ) {
 	Logger::debug( 'run sql:' . $sql );
 	$result = mysql_query( $sql, $db );
 	if( mysql_error() ) {
-		show_error('MySQL error ' . mysql_errno() . ' : ' . mysql_error());
+		trigger_error( 'MySQL error ' . mysql_errno() . ' : ' . mysql_error(), E_USER_ERROR );
 	}
 	return $result;
 }

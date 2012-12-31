@@ -15,9 +15,9 @@ class Logger {
 	 * @param string $msg
 	 */
 	public static function debug( $msg ) {
-	    if( ENV == 'development' && LOG_OUTPUT != 'none' ) {
-	    	self::__output( 'debug', $msg );
-	    }
+		if( ENV == 'development' ) {
+			self::__output( 'debug', $msg );
+		}
 	}
 	
 	/**
@@ -25,7 +25,7 @@ class Logger {
 	 * @param string $msg
 	 */
 	public static function info( $msg ) {
-		if( ENV == 'development' && LOG_OUTPUT != 'none' ) {
+		if( ENV == 'test' || ENV == 'development' ) {
 			self::__output( 'info', $msg );
 		}
 	}
@@ -35,9 +35,7 @@ class Logger {
 	 * @param string $msg
 	 */
 	public static function error( $msg ) {
-		if( LOG_OUTPUT != 'none' ) {
-			self::__output( 'error', $msg );
-		}
+		self::__output( 'error', $msg );
 	}
 	
 	/**
@@ -46,17 +44,22 @@ class Logger {
 	 * @param string $msg 消息
 	 */
 	private static function __output( $level, $msg ) {
+		$output = isset( $GLOBALS['app']['log_output'] ) ? $GLOBALS['app']['log_output'] : 'none';
+		
 		// 组装日志信息
 		$msg = date('Y-m-d H:i:s') . " [{$level}] {$msg}\r\n";
 		
-		if( 'file' == LOG_OUTPUT ) {
+		if( 'file' == $output ) {
 			self::__output4file($level, $msg);
 		}
-		elseif( 'database' == LOG_OUTPUT ) {
+		elseif( 'database' == $output ) {
 			self::__output4database($level, $msg);
 		}
-		elseif( 'console' == LOG_OUTPUT ) {
+		elseif( 'console' == $output ) {
 			self::__output4console($level, $msg);
+		}
+		else {
+			return;
 		}
 	}
 	
@@ -89,14 +92,13 @@ class Logger {
 		// create socket object
 		$socket = socket_create(AF_INET, SOCK_STREAM, SOL_TCP);  
 		if ($socket === false) {  
-			show_error( 'Creating socket failed:' . socket_strerror(socket_last_error()) );
+			trigger_error( 'Creating socket failed:' . socket_strerror(socket_last_error()) );
 		} 
 		          
 		// create socket connet
 		$result = socket_connect($socket, $address, $service_port);  
 		if ($result === false) {
-			show_error( 'Socket connect failed:' . socket_strerror(socket_last_error($socket)) );
-		    return false;  
+			trigger_error( 'Socket connect failed:' . socket_strerror(socket_last_error($socket)) );
 		} 
 		
 		$msg .= 'END';	// add stop string
